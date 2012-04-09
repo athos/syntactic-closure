@@ -1,1 +1,0 @@
-(ns syntactic-closure.core)
