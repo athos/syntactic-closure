@@ -68,3 +68,8 @@
 
 (defmethod compile-special 'var [env exp]
   exp)
+
+(defmethod compile-special 'set! [env exp]
+  (let [[_ var val] exp]
+    `(set! ~(compile env var)
+           ~(compile env val))))
