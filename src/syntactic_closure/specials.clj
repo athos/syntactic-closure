@@ -67,5 +67,4 @@
     `(recur ~@(compile-exprs env args))))
 
 (defmethod compile-special 'var [env exp]
-  (let [[_ var] exp]
-    `(var ~(compile var))))
+  exp)
