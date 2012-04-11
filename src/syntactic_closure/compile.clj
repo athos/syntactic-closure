@@ -9,7 +9,7 @@
   (if (namespace sym)
     sym
     (let [var (lookup env sym)]
-      (cond (nil? var) (error "unknown identifier: " sym)
+      (cond (nil? var) sym
             (var? var) (var->qualified-symbol var)
             :else var))))
 
