@@ -10,8 +10,11 @@
   (or (env name)
       ((toplevel-env) name)))
 
+(defn add-to-environment [env id alias]
+  (assoc env id alias))
+
 (defn extend-environment [env ids]
-  (reduce (fn [env id] (assoc env id (gensym id))) env ids))
+  (reduce (fn [env id] (add-to-environment env id (gensym id))) env ids))
 
 (defn filter-environment [names names-env else-env]
   (reduce (fn [env [name val]]
