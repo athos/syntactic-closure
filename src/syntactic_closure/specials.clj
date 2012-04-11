@@ -1,6 +1,6 @@
 (in-ns 'syntactic-closure)
 
-(use '[syntactic-closure.environment :only [extend-environment]])
+(use '[syntactic-closure.environment :only [extend-environment add-to-environment]])
 
 (def ^:private %specials
   '#{def if let* fn* quote do loop* recur var})
@@ -10,13 +10,16 @@
 
 (defmulti ^:private compile-special (fn [env [op & _]] op))
 
-;; FIXME:
-;;  DEF's init expr should be evaluated in the environment extended to include
-;;  defining variable.
+;;; NB:
+;;;  I don't know how (qq (def foo bar)) or (qq (def ~(make-syntactic-closure env nil 'foo) bar))
+;;;  should behave.
+;;;  For the time being, the first argument of `def' is never renamed.
 (defmethod compile-special 'def [env exp]
-  (let [[_ name init] exp]
-    `(def ~(compile env name)
-          ~(compile env init))))
+  (let [[_ var init] exp]
+    (let [var' (compile env var)
+          var' (if (namespace var') (symbol (name var')) var')
+          env' (add-to-environment env var' var')]
+     `(def ~var' ~(compile env' init)))))
 
 (defmethod compile-special 'if [env exp]
   (let [[_ test then else] exp]
