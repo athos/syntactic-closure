@@ -42,7 +42,7 @@
 (defmethod compile-special 'fn* [env exp]
   (let [[_ args & body] exp
         env' (extend-environment env args)]
-    `(fn* ~(vec (compile-exprs env' args))
+    `(fn* ~(compile env' args)
           ~@(compile-exprs env' body))))
 
 (defmethod compile-special 'quote [env exp]
