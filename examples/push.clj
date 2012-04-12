@@ -1,7 +1,7 @@
 (ns push
-  (:use [syntactic-closure :only [sc-macro-transformer make-syntactic-closure qq]]))
+  (:use [syntactic-closure :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
 
-(defmacro push! [x v]
+(define-syntax push! [x v]
   (sc-macro-transformer
     (fn [env]
       (let [x' (make-syntactic-closure env nil x)]
