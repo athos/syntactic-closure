@@ -1,4 +1,4 @@
-(in-ns 'syntactic-closure)
+(in-ns 'syntactic-closure.core)
 
 (use '[syntactic-closure.util :only [error var->qualified-symbol add-meta macro?]]
      '[syntactic-closure.environment :only [lookup]])

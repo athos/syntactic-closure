@@ -1,5 +1,5 @@
 (ns close
-  (:use [syntactic-closure :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
+  (:use [syntactic-closure.core :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
 
 (defn foo [x]
   x)

@@ -1,5 +1,5 @@
 (ns push
-  (:use [syntactic-closure :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
+  (:use [syntactic-closure.core :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
 
 (define-syntax push! [x v]
   (sc-macro-transformer

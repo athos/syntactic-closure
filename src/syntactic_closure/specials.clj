@@ -1,4 +1,4 @@
-(in-ns 'syntactic-closure)
+(in-ns 'syntactic-closure.core)
 
 (use '[syntactic-closure.environment :only [extend-environment add-to-environment]])
 

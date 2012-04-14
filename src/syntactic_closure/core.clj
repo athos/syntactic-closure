@@ -1,10 +1,10 @@
-(ns syntactic-closure
+(ns syntactic-closure.core
   (:refer-clojure :exclude [compile])
   (:use [syntactic-closure.environment :only [make-environment filter-environment]]))
 
-(load "syntactic_closure/compile")
-(load "syntactic_closure/specials")
-(load "syntactic_closure/quasiquote")
+(load "compile")
+(load "specials")
+(load "quasiquote")
 
 (defmacro define-syntax [name args & body]
   `(defmacro ~name ~args

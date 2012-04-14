@@ -1,5 +1,5 @@
 (ns let1
-  (:use [syntactic-closure :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
+  (:use [syntactic-closure.core :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
 
 (define-syntax let1 [var val & body]
   (sc-macro-transformer

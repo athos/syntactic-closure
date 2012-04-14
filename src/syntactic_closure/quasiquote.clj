@@ -1,4 +1,4 @@
-(in-ns 'syntactic-closure)
+(in-ns 'syntactic-closure.core)
 
 ;;
 ;; self-made quasiquote, because Clojure's syntax-quote meddles too much
