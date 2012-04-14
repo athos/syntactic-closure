@@ -25,7 +25,9 @@
         (compile (filter-environment free-vars' free-names-env env) exp)))))
 
 (defn capture-syntactic-environment [f]
-  (syntactic-closur-ize f))
+  (syntactic-closur-ize
+    (fn [env]
+      (compile env (f env)))))
 
 (defmacro sc-macro-transformer [f]
   `(if-let [env# (::env (meta ~'&form))]
