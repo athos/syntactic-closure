@@ -1,4 +1,5 @@
-(ns syntactic-closure.environment)
+(ns syntactic-closure.environment
+  (:use [syntactic-closure.util :only [var->qualified-symbol]]))
 
 ;;
 ;; syntactic environment
@@ -9,9 +10,14 @@
 (defn- toplevel-env [env]
   (ns-map (:ns-name env)))
 
-(defn lookup [env name]
-  (or ((:locals env) name)
-      ((toplevel-env env) name)))
+(defn lookup [env n]
+  (or ((:locals env) n)
+      (if-let [ns-name (namespace n)]
+        (let [var ((toplevel-env env) (symbol (name n)))]
+          (if (and var (= (namespace (var->qualified-symbol var)) ns-name))
+            var
+            n))
+        ((toplevel-env env) n))))
 
 (defn add-to-environment [env id alias]
   (make-environment (:ns-name env)

@@ -6,12 +6,10 @@
 (declare compile compile-exprs syntactic-closure? compile-special special?)
 
 (defn- compile-symbol [env sym]
-  (if (namespace sym)
-    sym
-    (let [var (lookup env sym)]
-      (cond (nil? var) sym
-            (var? var) (var->qualified-symbol var)
-            :else var))))
+  (let [var (lookup env sym)]
+    (cond (nil? var) sym
+          (var? var) (var->qualified-symbol var)
+          :else var)))
 
 (defn- compile-seq [env exp]
   (let [op (first exp), m (lookup env op)]
