@@ -53,6 +53,7 @@
   (let [var (env/lookup env sym)]
     (cond (nil? var) sym
           (var? var) (util/var->qualified-symbol var)
+          (class? var) (symbol (.getName var))
           :else var)))
 
 (defn- compile-seq [env exp]

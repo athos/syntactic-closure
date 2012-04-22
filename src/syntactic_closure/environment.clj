@@ -1,5 +1,6 @@
 (ns syntactic-closure.environment
-  (:use [syntactic-closure.util :only [var->qualified-symbol]]))
+  (:use [clojure.string :only [replace]]
+        [syntactic-closure.util :only [var->qualified-symbol]]))
 
 ;;
 ;; syntactic environment
@@ -12,12 +13,23 @@
 
 (defn lookup [env n]
   (or ((:locals env) n)
-      (if-let [ns-name (namespace n)]
-        (let [var ((toplevel-env env) (symbol (name n)))]
-          (if (and var (= (namespace (var->qualified-symbol var)) ns-name))
-            var
-            n))
-        ((toplevel-env env) n))))
+      (let [s (str n)]
+        (cond (and (not (namespace n)) (= (first s) \.))
+              n
+
+              (and (not (namespace n)) (= (last s) \.))
+              (let [csym (symbol (replace s #".$" ""))
+                    class (ns-resolve (:ns-name env) csym)]
+                (if (class? class)
+                  (symbol (str (.getName class) "."))
+                  n))
+
+              :else
+              (or (if (namespace n)
+                    (let [maybe-class ((toplevel-env env) (symbol (namespace n)))]
+                      (and (class? maybe-class)
+                           (symbol (.getName maybe-class) (name n)))))
+                  (ns-resolve (:ns-name env) n))))))
 
 (defn add-to-environment [env id alias]
   (make-environment (:ns-name env)
