@@ -89,7 +89,8 @@
 ;; compilers for special forms
 ;;
 (def ^:private %specials
-  '#{def if let* fn* quote do loop* recur var})
+  '#{def if let* fn* quote do loop* recur var set! new . letfn* clojure.core/import*
+     try throw monitor-enter monitor-exit deftype* case* reify*})
 
 (defn- special? [op]
   (%specials op))
@@ -120,16 +121,27 @@
         inits (map second bindings')
         env' (env/extend-environment env names)]
     `(let* ~(vec (interleave (compile-exprs env' names)
-                             (compile-exprs env' inits)))
+                             (compile-exprs env inits)))
            ~@(compile-exprs env' body))))
 
-;; FIXME:
-;;  Forms like (fn* foo [arg ...] body ...) are not supported.
 (defmethod compile-special 'fn* [env exp]
-  (let [[_ args & body] exp
-        env' (env/extend-environment env args)]
-    `(fn* ~(compile env' args)
-          ~@(compile-exprs env' body))))
+  (let [[_ maybe-name & body] exp
+        name (if (symbol? maybe-name) maybe-name nil)
+        maybe-args (if name (first body) maybe-name)]
+    (if (vector? maybe-args)
+      (let [args maybe-args
+            body (if name (rest body) body)
+            env' (env/extend-environment env (if name (cons name args) args))]
+        `(fn* ~@(and name [(compile env' name)])
+              ~(compile env' args)
+              ~@(compile-exprs env' body)))
+      (let [body (if name body (cons maybe-name body))
+            env' (if name (env/extend-environment env [name]) env)]
+       `(fn* ~@(and name [(compile env' name)])
+             ~@(for [[args & body] body
+                     :let [env'' (env/extend-environment env' args)]]
+                 `(~(compile env'' args)
+                   ~@(compile-exprs env'' body))))))))
 
 (defmethod compile-special 'quote [env exp]
   exp)
@@ -145,7 +157,7 @@
         inits (map second bindings')
         env' (env/extend-environment env names)]
     `(loop* ~(vec (interleave (compile-exprs env' names)
-                              (compile-exprs env' inits)))
+                              (compile-exprs env inits)))
             ~@(compile-exprs env' body))))
 
 (defmethod compile-special 'recur [env exp]
@@ -153,9 +165,86 @@
     `(recur ~@(compile-exprs env args))))
 
 (defmethod compile-special 'var [env exp]
-  exp)
+  (let [[_ exp'] exp]
+    `(var ~(compile env exp'))))
 
 (defmethod compile-special 'set! [env exp]
   (let [[_ var val] exp]
     `(set! ~(compile env var)
            ~(compile env val))))
+
+(defmethod compile-special 'new [env exp]
+  (let [[_ class & args] exp]
+    `(new ~(compile env class)
+          ~@(compile-exprs env args))))
+
+(defmethod compile-special '. [env exp]
+  (let [[_ x method-or-field & args] exp]
+    `(. ~(compile env x)
+        ~method-or-field
+        ~@(compile-exprs env args))))
+
+(defmethod compile-special 'letfn* [env exp]
+  (let [[_ fns & body] exp
+        fns' (partition 2 fns)
+        fnames (map first fns')
+        fexprs (map second fns')
+        env' (env/extend-environment env fnames)]
+    `(letfn* ~(vec (mapcat (fn [[fname fexpr]]
+                             [(compile env' fname)
+                              (compile env' fexpr)])
+                           (map vector fnames fexprs)))
+             ~@(compile-exprs env' body))))
+
+(defmethod compile-special 'clojure.core/import* [env exp]
+  exp)
+
+(defmethod compile-special 'try [env exp]
+  (let [[_ & body] exp
+        [exprs rest] (split-with #(not (and (seq? %) (= (first %) 'catch))) body)
+        [catch-clauses finally-clause]
+        (split-with #(not (and (seq? %) (= (first %) 'finally))) rest)]
+    `(try ~@(compile-exprs env exprs)
+          ~@(for [[_ class ename & body] catch-clauses
+                  :let [env' (env/extend-environment env [ename])]]
+              `(catch ~(compile env class) ~(compile env' ename)
+                 ~@(compile-exprs env' body)))
+          ~@(if (empty? finally-clause)
+              nil
+              (let [[_ & body] (first finally-clause)]
+                `((finally ~@(compile-exprs env body))))))))
+
+(defmethod compile-special 'throw [env exp]
+  (let [[_ exp'] exp]
+    `(throw ~(compile env exp'))))
+
+(defmethod compile-special 'monitor-enter [env exp]
+  (let [[_ exp'] exp]
+    `(monitor-enter ~(compile env exp'))))
+
+(defmethod compile-special 'monitor-exit [env exp]
+  (let [[_ exp'] exp]
+    `(monitor-exit ~(compile env exp'))))
+
+(defmethod compile-special 'deftype* [env exp]
+  (let [[_ tag class fields implements interfaces & methods] exp
+        env' (env/make-environment (:ns-name env) {})]
+    `(deftype* ~tag ~class ~fields :implements ~interfaces
+       ~@(for [[name args & body] methods
+               :let [env'' (env/extend-environment env' args)]]
+           `(~name ~(vec (compile-exprs env'' args))
+                   ~@(compile-exprs env'' body))))))
+
+(defmethod compile-special 'case* [env exp]
+  (let [[_ x & rest] exp]
+    `(case* ~(compile env x)
+            ~@rest)))
+
+(defmethod compile-special 'reify* [env exp]
+  (let [[_ interfaces & methods] exp]
+    `(reify*
+       ~(vec (compile-exprs env interfaces))
+       ~@(for [[name args & body] methods
+               :let [env' (env/extend-environment env args)]]
+           `(~name ~(vec (compile-exprs env' args))
+                   ~@(compile-exprs env' body))))))
