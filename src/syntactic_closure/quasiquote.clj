@@ -15,22 +15,20 @@
 (defn expand [xxs depth]
   (cond (and (unquote? xxs) (= depth 0)) (second xxs)
 
-        (seq? xxs)
+        (and (seq? xxs) (not (empty? xxs)))
         (let [[x & [x' :as xs]] xxs]
-          (cond (and (unquote-splicing? x) (= depth 0))
-                `(concat ~(second x) ~(expand xs depth))
+          (if (and (unquote-splicing? x) (= depth 0))
+            `(concat ~(second x) ~(expand xs depth))
+            (cond (= x 'qq)
+                  `(list '~'qq ~(expand x' (inc depth)))
 
-                (not (nil? x))
-                (cond (= x 'qq)
-                      `(list '~'qq ~(expand x' (inc depth)))
+                  (and (= x UNQUOTE) (> depth 0))
+                  `(list '~UNQUOTE ~(expand x' (dec depth)))
 
-                      (and (= x UNQUOTE) (> depth 0))
-                      `(list '~UNQUOTE ~(expand x' (dec depth)))
+                  (and (= x UNQUOTE-SPLICING) (> depth 0))
+                  `(list '~UNQUOTE-SPLICING ~(expand x' (dec depth)))
 
-                      (and (= x UNQUOTE-SPLICING) (> depth 0))
-                      `(list '~UNQUOTE-SPLICING ~(expand x' (dec depth)))
-
-                      :else `(cons ~(expand x depth) ~(expand xs depth)))))
+                  :else `(cons ~(expand x depth) ~(expand xs depth)))))
 
         (vector? xxs)
         `(vec ~(expand (seq xxs) depth))

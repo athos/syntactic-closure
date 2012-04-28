@@ -1,4 +1,5 @@
 (ns syntactic-closure.environment
+  (:refer-clojure :exclude [replace])
   (:use [clojure.string :only [replace]]
         [syntactic-closure.util :only [var->qualified-symbol]]))
 
