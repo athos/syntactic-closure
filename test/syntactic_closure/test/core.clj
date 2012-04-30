@@ -186,3 +186,14 @@
              (not= x3 'x)
              (not= x3 'x_01)
              (= f4 'foo.baz/f)))))
+
+(deftest compile-syntactic-closure
+  (let [env' (env/make-environment 'foo.baz '{x x_777})]
+    (is (= (core/compile env (core/make-syntactic-closure env' nil 'x))
+           'x_777))
+    (is (= (core/compile env (core/make-syntactic-closure env' nil 'y))
+           'y))
+    (is (= (core/compile env (core/make-syntactic-closure env' '(x) 'x))
+           'x_01))
+    (is (= (core/compile env (core/make-syntactic-closure env' '(y) 'y))
+           'y_02))))
