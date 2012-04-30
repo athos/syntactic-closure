@@ -57,14 +57,17 @@
           :else var)))
 
 (defn- compile-seq [env exp]
-  (let [op (first exp), m (env/lookup env op)]
-    (cond (and (var? m) (util/macro? m))
-          (compile env (apply m (util/add-meta exp {::env env}) env (rest exp)))
+  (let [op (first exp)]
+    (if (symbol? op)
+      (let [m (env/lookup env op)]
+        (cond (and (var? m) (util/macro? m))
+              (compile env (apply m (util/add-meta exp {::env env}) env (rest exp)))
 
-          (special? op)
-          (compile-special env exp)
+              (special? op)
+              (compile-special env exp)
 
-          :else (compile-exprs env exp))))
+              :else (compile-exprs env exp)))
+      (compile-exprs env exp))))
 
 (defn- compile-syntactic-closure [env sc]
   (sc env))

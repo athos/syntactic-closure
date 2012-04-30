@@ -27,7 +27,8 @@
   (is (= (core/compile env '(. Calendar getInstance)) '(. java.util.Calendar getInstance)))
   (is (= (core/compile env '(Calendar/getInstance)) '(java.util.Calendar/getInstance)))
   (is (= (core/compile env '(. x method y)) '(. x_01 method y_02)))
-  (is (= (core/compile env '(.method x y)) '(.method x_01 y_02))))
+  (is (= (core/compile env '(.method x y)) '(.method x_01 y_02)))
+  (is (= (core/compile env '((fn* [] (f x)))) '((fn* [] (foo.baz/f x_01))))))
 
 (deftest compile-def
   (are [expr expanded] (= (core/compile env expr) expanded)
