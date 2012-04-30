@@ -117,14 +117,23 @@
          ~(compile env then)
          ~(compile env else))))
 
+(defn- compile-nested-inits [names inits env]
+  (loop [[name & names] names, [init & inits] inits, ret [], env env]
+    (if (nil? name)
+      [ret env]
+      (recur names
+             inits
+             (conj ret (compile env init))
+             (env/extend-environment env [name])))))
+
 (defmethod compile-special 'let* [env exp]
   (let [[_ bindings & body] exp
         bindings' (partition 2 bindings)
         names (map first bindings')
         inits (map second bindings')
-        env' (env/extend-environment env names)]
+        [inits' env'] (compile-nested-inits names inits env)]
     `(let* ~(vec (interleave (compile-exprs env' names)
-                             (compile-exprs env inits)))
+                             inits'))
            ~@(compile-exprs env' body))))
 
 (defmethod compile-special 'fn* [env exp]
@@ -158,9 +167,9 @@
         bindings' (partition 2 bindings)
         names (map first bindings')
         inits (map second bindings')
-        env' (env/extend-environment env names)]
+        [inits' env'] (compile-nested-inits names inits env)]
     `(loop* ~(vec (interleave (compile-exprs env' names)
-                              (compile-exprs env inits)))
+                              inits'))
             ~@(compile-exprs env' body))))
 
 (defmethod compile-special 'recur [env exp]

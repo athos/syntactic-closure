@@ -49,6 +49,17 @@
              (= name x)
              (not= name 'x_01)
              (= val 'x_01)
+             (= f 'foo.baz/f))))
+  (let [[op [name1 val1, name2 val2] [f y]]
+        (core/compile env '(let* [x x, y x] (f y)))]
+    (is (and (= op 'let*)
+             (= name1 val2)
+             (not= name1 'x)
+             (not= name1 'x_01)
+             (= val1 'x_01)
+             (= name2 y)
+             (not= name2 'y)
+             (not= name2 'y_02)
              (= f 'foo.baz/f)))))
 
 (deftest compile-fn*
@@ -91,6 +102,16 @@
   (let [[_ [name val] [f x]] (core/compile env '(loop* [x x] (f x)))]
     (is (and (= name x)
              (= val 'x_01)
+             (= f 'foo.baz/f))))
+  (let [[_ [name1 val1, name2 val2] [f y]]
+        (core/compile env '(loop* [x x, y x] (f y)))]
+    (is (and (= name1 val2)
+             (not= name1 'x)
+             (not= name1 'x_01)
+             (= val1 'x_01)
+             (= name2 y)
+             (not= name2 'y)
+             (not= name2 'y_02)
              (= f 'foo.baz/f)))))
 
 (deftest compile-recur
