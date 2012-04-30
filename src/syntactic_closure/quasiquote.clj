@@ -12,31 +12,33 @@
 (defn- unquote-splicing? [x]
   (and (seq? x) (= (first x) UNQUOTE-SPLICING)))
 
-(defn expand [xxs depth]
-  (cond (and (unquote? xxs) (= depth 0)) (second xxs)
+(defn expand [xxs depth kwd on-unquote on-unquote-sp]
+  (letfn [(rec [xxs depth]
+            (cond (and (unquote? xxs) (= depth 0)) (on-unquote (second xxs))
 
-        (and (seq? xxs) (not (empty? xxs)))
-        (let [[x & [x' :as xs]] xxs]
-          (if (and (unquote-splicing? x) (= depth 0))
-            `(concat ~(second x) ~(expand xs depth))
-            (cond (= x 'qq)
-                  `(list '~'qq ~(expand x' (inc depth)))
+                  (and (seq? xxs) (not (empty? xxs)))
+                  (let [[x & [x' :as xs]] xxs]
+                    (if (and (unquote-splicing? x) (= depth 0))
+                      `(concat ~(on-unquote-sp (second x)) ~(rec xs depth))
+                      (cond (= x kwd)
+                            `(list '~kwd ~(rec x' (inc depth)))
 
-                  (and (= x UNQUOTE) (> depth 0))
-                  `(list '~UNQUOTE ~(expand x' (dec depth)))
+                            (and (= x UNQUOTE) (> depth 0))
+                            `(list '~UNQUOTE ~(rec x' (dec depth)))
 
-                  (and (= x UNQUOTE-SPLICING) (> depth 0))
-                  `(list '~UNQUOTE-SPLICING ~(expand x' (dec depth)))
+                            (and (= x UNQUOTE-SPLICING) (> depth 0))
+                            `(list '~UNQUOTE-SPLICING ~(rec x' (dec depth)))
 
-                  :else `(cons ~(expand x depth) ~(expand xs depth)))))
+                            :else `(cons ~(rec x depth) ~(rec xs depth)))))
 
-        (vector? xxs)
-        `(vec ~(expand (seq xxs) depth))
+                  (vector? xxs)
+                  `(vec ~(rec (seq xxs) depth))
 
-        (map? xxs)
-        `(apply conj {} (map vec (partition 2 ~(expand (apply concat xxs) depth))))
+                  (map? xxs)
+                  `(apply conj {} (map vec (partition 2 ~(rec (apply concat xxs) depth))))
 
-        :else `'~xxs))
+                  :else `'~xxs))]
+    (rec xxs depth)))
 
-(defmacro qq [x]
-  (expand x 0))
+(defmacro quasiquote [x]
+  (expand x 0 'quasiquote identity identity))
