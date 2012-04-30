@@ -154,8 +154,6 @@
         (core/compile env
           '(deftype* Foo foo.Foo [x] :implements [clojure.lang.IFn]
              (invoke [this] (f x))))]
-    (println `(~op ~tag ~class [~x1] ~implements [~interface]
-                (~invoke [~t] (~f ~x2))))
     (is (and (= op 'deftype*)
              (= tag 'Foo)
              (= class 'foo.Foo)
