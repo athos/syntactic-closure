@@ -1,0 +1,33 @@
+(ns syntactic-closure.test.quasiquote
+  (:use [syntactic-closure.core :only [qq]]
+        [clojure.test :only [deftest is]]))
+
+(def x 101)
+(def xs [102 103 104])
+
+(deftest quasiquote
+  (is (= (qq ())
+         '()))
+  (is (= (qq ~x)
+         101))
+  (is (= (qq (0 1 2))
+         '(0 1 2)))
+  (is (= (qq (0 ~x 2))
+         '(0 101 2)))
+  (is (= (qq (~x))
+         '(101)))
+  (is (= (qq (1 ~@xs 5))
+         '(1 102 103 104 5)))
+  (is (= (qq (~@xs))
+         '(102 103 104)))
+  (is (= (qq [1 ~@xs 5])
+         [1 102 103 104 5]))
+  (is (= (qq {0 1 ~@xs 5})
+         {0 1 102 103 104 5}))
+  (is (= (qq (0 (qq (~x ~@xs))))
+         '(0 (qq (~x ~@xs)))))
+  (is (= (qq (0 (qq ~'(~x ~@xs))))
+         '(0 (qq (clojure.core/unquote (quote (101 102 103 104)))))))
+  (is (= (qq (0 (qq (~~x ~~@xs))))
+         '(0 (qq ((clojure.core/unquote 101)
+                  (clojure.core/unquote (clojure.core/unquote-splicing xs))))))))
