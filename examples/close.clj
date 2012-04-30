@@ -1,13 +1,11 @@
 (ns close
-  (:use [syntactic-closure.core :only [define-syntax sc-macro-transformer make-syntactic-closure qq]]))
+  (:use [syntactic-closure :only [defsyntax qq]]))
 
 (defn foo [x]
   x)
 
-(define-syntax bar [x]
-  (sc-macro-transformer
-    (fn [env]
-      (qq (foo ~(make-syntactic-closure env nil x))))))
+(defsyntax bar [x]
+  (qq (foo ~^:? x)))
 
 (comment
 
