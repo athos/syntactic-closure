@@ -1,6 +1,10 @@
 (ns syntactic-closure
   (:require [syntactic-closure.core :as sc]))
 
+;;
+;; Note:
+;;  The macros provided in this namespace are subject to change.
+;;
 (def ^:dynamic *env*)
 
 (defmacro defsyntax [name args & body]
@@ -23,7 +27,5 @@
         x))
     (fn [x]
       (if-let [m (:? (meta x))]
-        `(map (let [env# *env*]
-                #(sc/make-syntactic-closure env# (free-vars ~m) %))
-              ~x)
+        `(map (bound-fn [x#] (sc/make-syntactic-closure *env* (free-vars ~m) x#)) ~x)
         x))))

@@ -10,7 +10,7 @@
         (let [it ~(make-syntactic-closure env nil test)]
           (if it
             ~(make-syntactic-closure env '[it] then)
-            ~(make-syntactic-closure env '[it] else)))))))
+            ~(make-syntactic-closure env nil else)))))))
 
 (define-syntax awhen' [test then]
   (sc-macro-transformer
