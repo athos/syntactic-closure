@@ -15,23 +15,17 @@
      (let [~'&ns-name '~(ns-name *ns*)]
        ~@body)))
 
-(defn- syntactic-closur-ize [f]
-  (with-meta f {:type ::syntactic-closure}))
-
 (defn syntactic-closure? [x]
   (if-let [m (meta x)]
     (= (:type m) ::syntactic-closure)))
 
 (defn make-syntactic-closure [env free-vars exp]
-  (let [free-vars' (set free-vars)]
-    (syntactic-closur-ize
-      (fn [free-names-env]
-        (compile (env/filter-environment free-vars' free-names-env env) exp)))))
+  (with-meta
+    {:env env, :free-vars (set free-vars), :exp exp}
+    {:type ::syntactic-closure}))
 
-(defn capture-syntactic-environment [f]
-  (syntactic-closur-ize
-    (fn [env]
-      (compile env (f env)))))
+#_(defn capture-syntactic-environment [f]
+  (with-meta f {:type ::environment-capturing}))
 
 (defmacro sc-macro-transformer [f]
   `(if-let [env# (::env (meta ~'&form))]
@@ -73,7 +67,9 @@
   (sc env))
 
 (defn compile [env exp]
-  (cond (syntactic-closure? exp) (compile-syntactic-closure env exp)
+  (cond (syntactic-closure? exp)
+        (compile (env/filter-environment (:free-vars exp) env (:env exp))
+                 (:exp exp))
         (symbol? exp) (compile-symbol env exp)
         (and (list? exp) (empty? exp)) '()
         (seq? exp) (compile-seq env exp)
