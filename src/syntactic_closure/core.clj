@@ -16,16 +16,32 @@
        ~@body)))
 
 (defn syntactic-closure? [x]
-  (if-let [m (meta x)]
-    (= (:type m) ::syntactic-closure)))
+  (= (type x) ::syntactic-closure))
 
 (defn make-syntactic-closure [env free-vars exp]
   (with-meta
     {:env env, :free-vars (set free-vars), :exp exp}
     {:type ::syntactic-closure}))
 
-#_(defn capture-syntactic-environment [f]
+(defn identifier? [x]
+  (or (symbol? x)
+      (and (syntactic-closure? x)
+           (symbol? (:exp x)))))
+
+(defn identifier=? [env1 x1 env2 x2]
+  (cond (and (symbol? x1) (symbol? x2))
+        (= (env/lookup env1 x1) (env/lookup env2 x2))
+
+        (and (identifier? x1) (identifier? x2))
+        (= (env/lookup env1 (:exp x1)) (env/lookup env2 (:exp x2)))
+
+        :else false))
+
+(defn capture-syntactic-environment [f]
   (with-meta f {:type ::environment-capturing}))
+
+(defn- environment-capturing? [x]
+  (= (type x) ::environment-capturing))
 
 (defmacro sc-macro-transformer [f]
   `(if-let [env# (::env (meta ~'&form))]
@@ -63,13 +79,11 @@
               :else (compile-exprs env exp)))
       (compile-exprs env exp))))
 
-(defn- compile-syntactic-closure [env sc]
-  (sc env))
-
 (defn compile [env exp]
   (cond (syntactic-closure? exp)
         (compile (env/filter-environment (:free-vars exp) env (:env exp))
                  (:exp exp))
+        (environment-capturing? exp) (compile env (exp env))
         (symbol? exp) (compile-symbol env exp)
         (and (list? exp) (empty? exp)) '()
         (seq? exp) (compile-seq env exp)
