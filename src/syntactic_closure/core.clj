@@ -5,15 +5,27 @@
 
 (load "quasiquote")
 
+(def ^:dynamic *env* nil)
+
+(defn toplevel-env []
+  (env/make-environment (ns-name *ns*) {}))
+
+(defmacro current-env []
+  `(env/make-environment (ns-name *ns*)
+                         (zipmap (keys ~'&env) (keys ~'&env))))
+
 ;;
 ;; public interfaces
 ;;
 (declare compile)
 
-(defmacro define-syntax [name args & body]
-  `(defmacro ~name ~args
-     (let [~'&ns-name '~(ns-name *ns*)]
-       ~@body)))
+(defmacro define-syntax [name & body]
+  `(defmacro ~name [& args#]
+     (let [transformer# (do ~@body)]
+       (if *env*
+         (transformer# ~'&form (toplevel-env))
+         (binding [*env* (current-env)]
+           (compile (transformer# ~'&form (toplevel-env))))))))
 
 (defn syntactic-closure? [x]
   (= (type x) ::syntactic-closure))
@@ -43,60 +55,53 @@
 (defn- environment-capturing? [x]
   (= (type x) ::environment-capturing))
 
-(defmacro sc-macro-transformer [f]
-  `(if-let [env# (::env (meta ~'&form))]
-     (make-syntactic-closure (env/make-environment ~'&ns-name {}) nil (~f env#))
-     (let [env# (env/make-environment
-                  (ns-name *ns*)
-                  (into {} (map (fn [[name# val#]] [name# name#]) ~'&env)))]
-       (compile env#
-                (make-syntactic-closure (env/make-environment ~'&ns-name {})
-                                        nil
-                                        (~f env#))))))
+(defn sc-macro-transformer [f]
+  (fn [form transformer-env]
+    (make-syntactic-closure transformer-env nil (f form *env*))))
 
 ;;
 ;; compiler
 ;;
 (declare compile-exprs compile-special special?)
 
-(defn- compile-symbol [env sym]
-  (let [var (env/lookup env sym)]
+(defn- compile-symbol [sym]
+  (let [var (env/lookup *env* sym)]
     (cond (nil? var) sym
           (var? var) (util/var->qualified-symbol var)
           (class? var) (symbol (.getName var))
           :else var)))
 
-(defn- compile-seq [env exp]
+(defn- compile-seq [exp]
   (let [op (first exp)]
     (if (symbol? op)
-      (let [m (env/lookup env op)]
+      (let [m (env/lookup *env* op)]
         (cond (and (var? m) (util/macro? m))
-              (compile env (apply m (util/add-meta exp {::env env}) env (rest exp)))
+              (compile (apply m exp *env* (rest exp)))
 
               (special? op)
-              (compile-special env exp)
+              (compile-special exp)
 
-              :else (compile-exprs env exp)))
-      (compile-exprs env exp))))
+              :else (compile-exprs exp)))
+      (compile-exprs exp))))
 
-(defn compile [env exp]
+(defn compile [exp]
   (cond (syntactic-closure? exp)
-        (compile (env/filter-environment (:free-vars exp) env (:env exp))
-                 (:exp exp))
-        (environment-capturing? exp) (compile env (exp env))
-        (symbol? exp) (compile-symbol env exp)
+        (binding [*env* (env/filter-environment (:free-vars exp) *env* (:env exp))]
+          (compile (:exp exp)))
+        (environment-capturing? exp) (compile (exp *env*))
+        (symbol? exp) (compile-symbol exp)
         (and (list? exp) (empty? exp)) '()
-        (seq? exp) (compile-seq env exp)
-        (vector? exp) (vec (compile-exprs env exp))
+        (seq? exp) (compile-seq exp)
+        (vector? exp) (vec (compile-exprs exp))
         (map? exp) (reduce (fn [map [key val]]
-                             (assoc map (compile env key) (compile env val)))
+                             (assoc map (compile key) (compile val)))
                            {}
                            exp)
-        (set? exp) (compile-exprs env exp)
+        (set? exp) (compile-exprs exp)
         :else exp))
 
-(defn- compile-exprs [env exprs]
-  (map #(compile env %) exprs))
+(defn- compile-exprs [exprs]
+  (doall (map compile exprs)))
 
 ;;
 ;; compilers for special forms
@@ -108,24 +113,24 @@
 (defn- special? [op]
   (%specials op))
 
-(defmulti ^:private compile-special (fn [env [op & _]] op))
+(defmulti ^:private compile-special (fn [[op & _]] op))
 
 ;;; NB:
 ;;;  I don't know how (qq (def foo bar)) or (qq (def ~(make-syntactic-closure env nil 'foo) bar))
 ;;;  should behave.
 ;;;  For the time being, the first argument of `def' is never renamed.
-(defmethod compile-special 'def [env exp]
+(defmethod compile-special 'def [exp]
   (let [[_ var init] exp]
-    (let [var' (compile env var)
-          var' (if (namespace var') (symbol (name var')) var')
-          env' (env/add-to-environment env var' var')]
-     `(def ~var' ~(compile env' init)))))
+    (let [var' (compile var)
+          var' (if (namespace var') (symbol (name var')) var')]
+      (binding [*env* (env/add-to-environment *env* var' var')]
+        `(def ~var' ~(compile init))))))
 
-(defmethod compile-special 'if [env exp]
+(defmethod compile-special 'if [exp]
   (let [[_ test then else] exp]
-    `(if ~(compile env test)
-         ~(compile env then)
-         ~(compile env else))))
+    `(if ~(compile test)
+         ~(compile then)
+         ~(compile else))))
 
 (defn- compile-nested-inits [names inits env]
   (loop [[name & names] names, [init & inits] inits, ret [], env env]
@@ -133,140 +138,136 @@
       [ret env]
       (recur names
              inits
-             (conj ret (compile env init))
+             (conj ret (binding [*env* env] (compile init)))
              (env/extend-environment env [name])))))
 
-(defmethod compile-special 'let* [env exp]
+(defmethod compile-special 'let* [exp]
   (let [[_ bindings & body] exp
         bindings' (partition 2 bindings)
         names (map first bindings')
         inits (map second bindings')
-        [inits' env'] (compile-nested-inits names inits env)]
-    `(let* ~(vec (interleave (compile-exprs env' names)
-                             inits'))
-           ~@(compile-exprs env' body))))
+        [inits' env'] (compile-nested-inits names inits *env*)]
+    (binding [*env* env']
+      `(let* ~(vec (interleave (compile-exprs names) inits'))
+             ~@(compile-exprs body)))))
 
-(defmethod compile-special 'fn* [env exp]
+(defmethod compile-special 'fn* [exp]
   (let [[_ maybe-name & body] exp
         name (if (symbol? maybe-name) maybe-name nil)
         maybe-args (if name (first body) maybe-name)]
     (if (vector? maybe-args)
       (let [args maybe-args
-            body (if name (rest body) body)
-            env' (env/extend-environment env (if name (cons name args) args))]
-        `(fn* ~@(and name [(compile env' name)])
-              ~(compile env' args)
-              ~@(compile-exprs env' body)))
-      (let [body (if name body (cons maybe-name body))
-            env' (if name (env/extend-environment env [name]) env)]
-       `(fn* ~@(and name [(compile env' name)])
-             ~@(for [[args & body] body
-                     :let [env'' (env/extend-environment env' args)]]
-                 `(~(compile env'' args)
-                   ~@(compile-exprs env'' body))))))))
+            body (if name (rest body) body)]
+        (binding [*env* (env/extend-environment *env* (if name (cons name args) args))]
+         `(fn* ~@(and name [(compile name)]) ~(compile args) ~@(compile-exprs body))))
+      (let [body (if name body (cons maybe-name body))]
+        (binding [*env* (if name (env/extend-environment *env* [name]) *env*)]
+         `(fn* ~@(and name [(compile name)])
+               ~@(doall (for [[args & body] body]
+                          (binding [*env* (env/extend-environment *env* args)]
+                            `(~(compile args)
+                              ~@(compile-exprs body)))))))))))
 
-(defmethod compile-special 'quote [env exp]
+(defmethod compile-special 'quote [exp]
   exp)
 
-(defmethod compile-special 'do [env exp]
+(defmethod compile-special 'do [exp]
   (let [[_ & exprs] exp]
-    `(do ~@(compile-exprs env exprs))))
+    `(do ~@(compile-exprs exprs))))
 
-(defmethod compile-special 'loop* [env exp]
+(defmethod compile-special 'loop* [exp]
   (let [[_ bindings & body] exp
         bindings' (partition 2 bindings)
         names (map first bindings')
         inits (map second bindings')
-        [inits' env'] (compile-nested-inits names inits env)]
-    `(loop* ~(vec (interleave (compile-exprs env' names)
-                              inits'))
-            ~@(compile-exprs env' body))))
+        [inits' env'] (compile-nested-inits names inits *env*)]
+    (binding [*env* env']
+     `(loop* ~(vec (interleave (compile-exprs names) inits'))
+             ~@(compile-exprs body)))))
 
-(defmethod compile-special 'recur [env exp]
+(defmethod compile-special 'recur [exp]
   (let [[_ & args] exp]
-    `(recur ~@(compile-exprs env args))))
+    `(recur ~@(compile-exprs args))))
 
-(defmethod compile-special 'var [env exp]
+(defmethod compile-special 'var [exp]
   (let [[_ exp'] exp]
-    `(var ~(compile env exp'))))
+    `(var ~(compile exp'))))
 
-(defmethod compile-special 'set! [env exp]
+(defmethod compile-special 'set! [exp]
   (let [[_ var val] exp]
-    `(set! ~(compile env var)
-           ~(compile env val))))
+    `(set! ~(compile var)
+           ~(compile val))))
 
-(defmethod compile-special 'new [env exp]
+(defmethod compile-special 'new [exp]
   (let [[_ class & args] exp]
-    `(new ~(compile env class)
-          ~@(compile-exprs env args))))
+    `(new ~(compile class)
+          ~@(compile-exprs args))))
 
-(defmethod compile-special '. [env exp]
+(defmethod compile-special '. [exp]
   (let [[_ x method-or-field & args] exp]
-    `(. ~(compile env x)
+    `(. ~(compile x)
         ~method-or-field
-        ~@(compile-exprs env args))))
+        ~@(compile-exprs args))))
 
-(defmethod compile-special 'letfn* [env exp]
+(defmethod compile-special 'letfn* [exp]
   (let [[_ fns & body] exp
         fns' (partition 2 fns)
         fnames (map first fns')
-        fexprs (map second fns')
-        env' (env/extend-environment env fnames)]
-    `(letfn* ~(vec (mapcat (fn [[fname fexpr]]
-                             [(compile env' fname)
-                              (compile env' fexpr)])
-                           (map vector fnames fexprs)))
-             ~@(compile-exprs env' body))))
+        fexprs (map second fns')]
+    (binding [*env* (env/extend-environment *env* fnames)]
+      `(letfn* ~(vec (mapcat (fn [[fname fexpr]]
+                               [(compile fname) (compile fexpr)])
+                             (map vector fnames fexprs)))
+               ~@(compile-exprs body)))))
 
-(defmethod compile-special 'clojure.core/import* [env exp]
+(defmethod compile-special 'clojure.core/import* [exp]
   exp)
 
-(defmethod compile-special 'try [env exp]
+(defmethod compile-special 'try [exp]
   (let [[_ & body] exp
         [exprs rest] (split-with #(not (and (seq? %) (= (first %) 'catch))) body)
         [catch-clauses finally-clause]
         (split-with #(not (and (seq? %) (= (first %) 'finally))) rest)]
-    `(try ~@(compile-exprs env exprs)
-          ~@(for [[_ class ename & body] catch-clauses
-                  :let [env' (env/extend-environment env [ename])]]
-              `(catch ~(compile env class) ~(compile env' ename)
-                 ~@(compile-exprs env' body)))
+    `(try ~@(compile-exprs exprs)
+          ~@(doall (for [[_ class ename & body] catch-clauses]
+                     (binding [*env* (env/extend-environment *env* [ename])]
+                       `(catch ~(compile class) ~(compile ename)
+                          ~@(compile-exprs body)))))
           ~@(if (empty? finally-clause)
               nil
               (let [[_ & body] (first finally-clause)]
-                `((finally ~@(compile-exprs env body))))))))
+                `((finally ~@(compile-exprs body))))))))
 
-(defmethod compile-special 'throw [env exp]
+(defmethod compile-special 'throw [exp]
   (let [[_ exp'] exp]
-    `(throw ~(compile env exp'))))
+    `(throw ~(compile exp'))))
 
-(defmethod compile-special 'monitor-enter [env exp]
+(defmethod compile-special 'monitor-enter [exp]
   (let [[_ exp'] exp]
-    `(monitor-enter ~(compile env exp'))))
+    `(monitor-enter ~(compile exp'))))
 
-(defmethod compile-special 'monitor-exit [env exp]
+(defmethod compile-special 'monitor-exit [exp]
   (let [[_ exp'] exp]
-    `(monitor-exit ~(compile env exp'))))
+    `(monitor-exit ~(compile exp'))))
 
-(defmethod compile-special 'deftype* [env exp]
-  (let [[_ tag class fields implements interfaces & methods] exp
-        env' (env/make-environment (:ns-name env) {})]
-    `(deftype* ~tag ~class ~fields :implements ~interfaces
-       ~@(for [[name args & body] methods
-               :let [env'' (env/extend-environment env' args)]]
-           `(~name ~(vec (compile-exprs env'' args))
-                   ~@(compile-exprs env'' body))))))
+(defmethod compile-special 'deftype* [exp]
+  (let [[_ tag class fields implements interfaces & methods] exp]
+    (binding [*env* (env/make-environment (:ns-name *env*) {})]
+      `(deftype* ~tag ~class ~fields :implements ~interfaces
+         ~@(doall (for [[name args & body] methods]
+                    (binding [*env* (env/extend-environment *env* args)]
+                      `(~name ~(vec (compile-exprs args))
+                              ~@(compile-exprs body)))))))))
 
-(defmethod compile-special 'case* [env exp]
+(defmethod compile-special 'case* [exp]
   (let [[_ x & rest] exp]
-    `(case* ~(compile env x)
-            ~@rest)))
+    `(case* ~(compile x) ~@rest)))
 
-(defmethod compile-special 'reify* [env exp]
+(defmethod compile-special 'reify* [exp]
   (let [[_ interfaces & methods] exp]
     `(reify*
-       ~(vec (compile-exprs env interfaces))
-       ~@(for [[name args & body] methods
-               :let [env' (env/extend-environment env args)]]
-           `(~name ~(vec (compile-exprs env' args))
-                   ~@(compile-exprs env' body))))))
+       ~(vec (compile-exprs interfaces))
+       ~@(doall (for [[name args & body] methods]
+                  (binding [*env* (env/extend-environment *env* args)]
+                    `(~name ~(vec (compile-exprs args))
+                            ~@(compile-exprs body))))))))

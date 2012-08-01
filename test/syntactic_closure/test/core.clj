@@ -14,24 +14,27 @@
 
 (def env (env/make-environment 'foo.baz '{x x_01, y y_02}))
 
+(defn compile' [env exp]
+  (binding [core/*env* env] (core/compile exp)))
+
 (deftest compile
-  (is (= (core/compile env 'x) 'x_01))
-  (is (= (core/compile env 'z) 'z))
-  (is (= (core/compile env '(f x y)) '(foo.baz/f x_01 y_02)))
-  (is (= (core/compile env '(g x y)) '(g x_01 y_02)))
-  (is (= (core/compile env '(foo.baz/f x y)) '(foo.baz/f x_01 y_02)))
-  (is (= (core/compile env '(foo.baz/g x y)) '(foo.baz/g x_01 y_02)))
-  (is (= (core/compile env 'Calendar) 'java.util.Calendar))
-  (is (= (core/compile env '(new Calendar x y)) '(new java.util.Calendar x_01 y_02)))
-  (is (= (core/compile env '(Calendar. x y)) '(java.util.Calendar. x_01 y_02)))
-  (is (= (core/compile env '(. Calendar getInstance)) '(. java.util.Calendar getInstance)))
-  (is (= (core/compile env '(Calendar/getInstance)) '(java.util.Calendar/getInstance)))
-  (is (= (core/compile env '(. x method y)) '(. x_01 method y_02)))
-  (is (= (core/compile env '(.method x y)) '(.method x_01 y_02)))
-  (is (= (core/compile env '((fn* [] (f x)))) '((fn* [] (foo.baz/f x_01))))))
+  (is (= (compile' env 'x) 'x_01))
+  (is (= (compile' env 'z) 'z))
+  (is (= (compile' env '(f x y)) '(foo.baz/f x_01 y_02)))
+  (is (= (compile' env '(g x y)) '(g x_01 y_02)))
+  (is (= (compile' env '(foo.baz/f x y)) '(foo.baz/f x_01 y_02)))
+  (is (= (compile' env '(foo.baz/g x y)) '(foo.baz/g x_01 y_02)))
+  (is (= (compile' env 'Calendar) 'java.util.Calendar))
+  (is (= (compile' env '(new Calendar x y)) '(new java.util.Calendar x_01 y_02)))
+  (is (= (compile' env '(Calendar. x y)) '(java.util.Calendar. x_01 y_02)))
+  (is (= (compile' env '(. Calendar getInstance)) '(. java.util.Calendar getInstance)))
+  (is (= (compile' env '(Calendar/getInstance)) '(java.util.Calendar/getInstance)))
+  (is (= (compile' env '(. x method y)) '(. x_01 method y_02)))
+  (is (= (compile' env '(.method x y)) '(.method x_01 y_02)))
+  (is (= (compile' env '((fn* [] (f x)))) '((fn* [] (foo.baz/f x_01))))))
 
 (deftest compile-def
-  (are [expr expanded] (= (core/compile env expr) expanded)
+  (are [expr expanded] (= (binding [] (compile' env expr)) expanded)
     '(def a x)
     '(def a x_01)
 
@@ -39,19 +42,19 @@
     '(def a (fn* [] a))))
 
 (deftest compile-if
-  (are [expr expanded] (= (core/compile env expr) expanded)
+  (are [expr expanded] (= (compile' env expr) expanded)
     '(if (f 0) x y)
     '(if (foo.baz/f 0) x_01 y_02)))
 
 (deftest compile-let*
-  (let [[op [name val] [f x]] (core/compile env '(let* [x x] (f x)))]
+  (let [[op [name val] [f x]] (compile' env '(let* [x x] (f x)))]
     (is (and (= op 'let*)
              (= name x)
              (not= name 'x_01)
              (= val 'x_01)
              (= f 'foo.baz/f))))
   (let [[op [name1 val1, name2 val2] [f y]]
-        (core/compile env '(let* [x x, y x] (f y)))]
+        (compile' env '(let* [x x, y x] (f y)))]
     (is (and (= op 'let*)
              (= name1 val2)
              (not= name1 'x)
@@ -63,19 +66,19 @@
              (= f 'foo.baz/f)))))
 
 (deftest compile-fn*
-  (let [[op [name] [f x]] (core/compile env '(fn* [x] (f x)))]
+  (let [[op [name] [f x]] (compile' env '(fn* [x] (f x)))]
     (is (and (= op 'fn*)
              (= name x)
              (not= name 'x)
              (not= name 'x_01)
              (= f 'foo.baz/f))))
-  (let [[op [[name] [f x]]] (core/compile env '(fn* ([x] (f x))))]
+  (let [[op [[name] [f x]]] (compile' env '(fn* ([x] (f x))))]
     (is (and (= op 'fn*)
              (= name x)
              (not= name 'x)
              (not= name 'x_01)
              (= f 'foo.baz/f))))
-  (let [[op fname [name] [f x]] (core/compile env '(fn* f [x] (f x)))]
+  (let [[op fname [name] [f x]] (compile' env '(fn* f [x] (f x)))]
     (is (and (= op 'fn*)
              (= fname f)
              (not= f 'f)
@@ -83,7 +86,7 @@
              (= name x)
              (not= name 'x)
              (not= name 'x_01))))
-  (let [[op fname [[name] [f x]]] (core/compile env '(fn* f ([x] (f x))))]
+  (let [[op fname [[name] [f x]]] (compile' env '(fn* f ([x] (f x))))]
     (is (and (= op 'fn*)
              (= fname f)
              (not= f 'f)
@@ -93,18 +96,18 @@
              (not= name 'x_01)))))
 
 (deftest compile-quote
-  (is (= (core/compile env '(quote (def f x))) '(quote (def f x)))))
+  (is (= (compile' env '(quote (def f x))) '(quote (def f x)))))
 
 (deftest compile-do
-  (is (= (core/compile env '(do (f x) y)) '(do (foo.baz/f x_01) y_02))))
+  (is (= (compile' env '(do (f x) y)) '(do (foo.baz/f x_01) y_02))))
 
 (deftest compile-loop*
-  (let [[_ [name val] [f x]] (core/compile env '(loop* [x x] (f x)))]
+  (let [[_ [name val] [f x]] (compile' env '(loop* [x x] (f x)))]
     (is (and (= name x)
              (= val 'x_01)
              (= f 'foo.baz/f))))
   (let [[_ [name1 val1, name2 val2] [f y]]
-        (core/compile env '(loop* [x x, y x] (f y)))]
+        (compile' env '(loop* [x x, y x] (f y)))]
     (is (and (= name1 val2)
              (not= name1 'x)
              (not= name1 'x_01)
@@ -115,17 +118,17 @@
              (= f 'foo.baz/f)))))
 
 (deftest compile-recur
-  (is (= (core/compile env '(recur (f x))) '(recur (foo.baz/f x_01)))))
+  (is (= (compile' env '(recur (f x))) '(recur (foo.baz/f x_01)))))
 
 (deftest compile-var
-  (is (= (core/compile env '(var f)) '(var foo.baz/f))))
+  (is (= (compile' env '(var f)) '(var foo.baz/f))))
 
 (deftest compile-set!
-  (is (= (core/compile env '(set! y (f x))) '(set! y_02 (foo.baz/f x_01)))))
+  (is (= (compile' env '(set! y (f x))) '(set! y_02 (foo.baz/f x_01)))))
 
 (deftest compile-letfn*
   (let [[op [f1 [fn1 f2 [x1] [f3 [g4 x2]]], g1 [fn2 g2 [x3] [g3 [f4 x4]]]] [f5 [g5 x]]]
-        (core/compile env '(letfn* [f (fn* f [x] (f (g x))), g (fn* g [x] (g (f x)))] (f (g x))))]
+        (compile' env '(letfn* [f (fn* f [x] (f (g x))), g (fn* g [x] (g (f x)))] (f (g x))))]
     (is (and  (= op 'letfn*)
               (= fn1 fn2 'fn*)
               (= f1 f4 f5)
@@ -145,7 +148,7 @@
 
 (deftest compile-try
   (let [[op1 [f1 x] [f2 y] [op2 class name [f3 e]] [op3 [f4 x']]]
-        (core/compile env
+        (compile' env
           '(try (f x) (f y) (catch Exception x (f x)) (finally (f x))))]
     (is (and (= op1 'try)
              (= op2 'catch)
@@ -159,20 +162,20 @@
              (not= name 'x_01)))))
 
 (deftest compile-throw
-  (is (= (core/compile env '(throw (new Exception x)))
+  (is (= (compile' env '(throw (new Exception x)))
          '(throw (new java.lang.Exception x_01)))))
 
 (deftest compile-monitor-enter
-  (is (= (core/compile env '(monitor-enter x))
+  (is (= (compile' env '(monitor-enter x))
          '(monitor-enter x_01))))
 
 (deftest compile-monitor-exit
-  (is (= (core/compile env '(monitor-exit x))
+  (is (= (compile' env '(monitor-exit x))
          '(monitor-exit x_01))))
 
 (deftest compile-deftype*
   (let [[op tag class [x1] implements [interface] [invoke [t] [f x2]]]
-        (core/compile env
+        (compile' env
           '(deftype* Foo foo.Foo [x] :implements [clojure.lang.IFn]
              (invoke [this] (f x))))]
     (is (and (= op 'deftype*)
@@ -191,7 +194,7 @@
 
 (deftest compile-reify*
   (let [[op [i] [f1 [t1] [f2 x2]] [f3 [t2 x3] [f4 x4]]]
-        (core/compile env
+        (compile' env
           '(reify*
              [clojure.lang.IFn]
              (invoke [this] (f x))
@@ -210,11 +213,11 @@
 
 (deftest compile-syntactic-closure
   (let [env' (env/make-environment 'foo.baz '{x x_777})]
-    (is (= (core/compile env (core/make-syntactic-closure env' nil 'x))
+    (is (= (compile' env (core/make-syntactic-closure env' nil 'x))
            'x_777))
-    (is (= (core/compile env (core/make-syntactic-closure env' nil 'y))
+    (is (= (compile' env (core/make-syntactic-closure env' nil 'y))
            'y))
-    (is (= (core/compile env (core/make-syntactic-closure env' '(x) 'x))
+    (is (= (compile' env (core/make-syntactic-closure env' '(x) 'x))
            'x_01))
-    (is (= (core/compile env (core/make-syntactic-closure env' '(y) 'y))
+    (is (= (compile' env (core/make-syntactic-closure env' '(y) 'y))
            'y_02))))
