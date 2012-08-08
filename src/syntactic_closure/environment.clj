@@ -32,13 +32,16 @@
                            (symbol (.getName maybe-class) (name n)))))
                   (ns-resolve (:ns-name env) n))))))
 
-(defn add-to-environment [env id alias]
+(defn add-to-environment [env id val]
   (make-environment (:ns-name env)
-                    (assoc (:locals env) id alias)))
+                    (assoc (:locals env) id val)))
 
-(defn extend-environment [env ids]
-  (make-environment (:ns-name env)
-                    (:locals (reduce #(add-to-environment %1 %2 (gensym %2)) env ids))))
+(defn extend-environment
+  ([env ids]
+   (extend-environment env ids (map gensym ids)))
+  ([env ids vals]
+   (make-environment (:ns-name env)
+                     (merge (:locals env) (zipmap ids vals)))))
 
 (defn filter-environment [names names-env else-env]
   (make-environment (:ns-name else-env)

@@ -27,6 +27,28 @@
          (binding [*env* (current-env)]
            (compile (transformer# ~'&form (toplevel-env))))))))
 
+(defmacro let-syntax [bindings & body]
+  (let [env (or *env* (current-env))
+        bindings' (for [[fname fexpr] (partition 2 bindings)
+                        :let [transformer (binding [*env* (toplevel-env)]
+                                            (eval fexpr))]]
+                    [fname (fn [form] (transformer form env))])]
+    (binding [*env* (env/extend-environment env
+                                            (map first bindings')
+                                            (map second  bindings'))]
+      (compile `(do ~@body)))))
+
+(defmacro letrec-syntax [bindings & body]
+  (let [env (atom (or *env* (current-env)))
+        bindings' (for [[fname fexpr] (partition 2 bindings)
+                        :let [transformer (binding [*env* (toplevel-env)]
+                                            (eval fexpr))]]
+                    [fname (fn [form] (transformer form @env))])]
+    (doseq [[fname transformer] bindings']
+      (swap! env #(env/add-to-environment % fname transformer)))
+    (binding [*env* env]
+      (compile `(do ~@body)))))
+
 (defn syntactic-closure? [x]
   (= (type x) ::syntactic-closure))
 
@@ -77,6 +99,8 @@
       (let [m (env/lookup *env* op)]
         (cond (and (var? m) (util/macro? m))
               (compile (apply m exp *env* (rest exp)))
+
+              (fn? m) (compile (m exp))
 
               (special? op)
               (compile-special exp)
@@ -206,7 +230,7 @@
 (defmethod compile-special '. [exp]
   (let [[_ x method-or-field & args] exp]
     `(. ~(compile x)
-        ~method-or-field
+        ~method-or-field  ;; FIXME: such forms of method (method arg1 arg2 ...) must be accepted
         ~@(compile-exprs args))))
 
 (defmethod compile-special 'letfn* [exp]
